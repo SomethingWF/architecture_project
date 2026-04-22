@@ -14,5 +14,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     restart: always
 
+  keydb:
+    image: "eqalpha/keydb:x86_64_v5.3.3"
+    container_name: keydb-wallet
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
