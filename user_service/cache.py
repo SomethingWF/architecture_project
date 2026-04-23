@@ -7,8 +7,6 @@ from user_service.config import settings
 from user_service.schemas import UserDTO
 
 logger = logging.getLogger("uvicorn")
-#logger.setLevel(logging.INFO)
-
 redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
 
 class UserCacheService:

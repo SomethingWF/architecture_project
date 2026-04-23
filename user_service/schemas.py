@@ -10,6 +10,11 @@ class UserUpdateDTO(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
 
+class UserCreatedEvent(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    name: str
+
 class UserDTO(BaseModel):
     id: uuid.UUID
     name: str

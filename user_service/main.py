@@ -8,19 +8,21 @@ import uuid
 
 from user_service.database import engine, Base, get_db
 from user_service.models import User
-from user_service.schemas import UserCreateDTO, UserUpdateDTO, UserDTO
+from user_service.schemas import UserCreateDTO, UserUpdateDTO, UserCreatedEvent, UserDTO
 from user_service.config import settings
 from user_service.cache import redis_client, UserCacheService, get_cache_service
+from user_service.rabbitmq import publisher
 
 logger = logging.getLogger("uvicorn")
-#logger.setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await publisher.connect()
     yield
     await redis_client.aclose()
+    await publisher.close()
 
 app = FastAPI(title="User Service API", lifespan=lifespan)
 
@@ -34,6 +36,11 @@ async def create_user(user_dto: UserCreateDTO, db: AsyncSession = Depends(get_db
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+    
+    # RabbitMQ
+    event = UserCreatedEvent(id=new_user.id, email=new_user.email, name=new_user.name)
+    await publisher.publish_user_event(event)
+    
     return new_user
 
 @app.get("/users/{user_id}", response_model=UserDTO)
@@ -77,6 +84,7 @@ async def update_user(
     await db.commit()
     await db.refresh(user)
     
+    # Кэширование
     logger.info("User cache evict on update")
     await cache.remove_from_cache(user_id)
     
@@ -96,6 +104,7 @@ async def delete_user(
     await db.delete(user)
     await db.commit()
     
+    # Кэширование
     logger.info("User cache evict on delete")
     await cache.remove_from_cache(user_id)
 
