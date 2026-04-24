@@ -29,10 +29,6 @@ class EventConsumerListener:
     async def consume_events(self):
         await self.queue.consume(self.process_message)
         logger.info("Listener готов принимать сообщения")
-        try:
-            await asyncio.Future()
-        except asyncio.CancelledError:
-            logger.info("Listener перестал принимать сообщения")
 
     async def close(self):
         if self.connection:

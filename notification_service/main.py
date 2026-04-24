@@ -8,9 +8,8 @@ from notification_service.rabbitmq import listener
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await listener.connect()
-    task = asyncio.create_task(listener.consume_events())
+    await listener.consume_events()
     yield
-    task.cancel()
     await listener.close()
 
 app = FastAPI(title="Notification Service", lifespan=lifespan)
