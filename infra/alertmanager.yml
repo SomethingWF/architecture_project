@@ -1,0 +1,13 @@
+global:
+  smtp_smarthost: 'mailpit:1025'
+  smtp_from: 'alertmanager@wallet.local'
+  smtp_require_tls: false
+
+receivers:
+  - name: 'email-receiver'
+    email_configs:
+      - to: 'admin@wallet.local'
+        send_resolved: true
+
+route:
+  receiver: 'email-receiver'

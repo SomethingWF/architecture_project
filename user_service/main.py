@@ -1,10 +1,14 @@
-import uvicorn
 import logging
+import uuid
+from contextlib import asynccontextmanager
+import time
+
+import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from contextlib import asynccontextmanager
-import uuid
+from sqlalchemy import delete
+from prometheus_client import make_asgi_app
 
 from user_service.database import engine, Base, get_db
 from user_service.models import User
@@ -12,6 +16,7 @@ from user_service.schemas import UserCreateDTO, UserUpdateDTO, UserCreatedEvent,
 from user_service.config import settings
 from user_service.cache import redis_client, UserCacheService, get_cache_service
 from user_service.rabbitmq import publisher
+from user_service.metrics import USERS_CREATED_TOTAL, API_REQUEST_DURATION
 
 logger = logging.getLogger("uvicorn")
 
@@ -26,8 +31,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="User Service API", lifespan=lifespan)
 
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
 @app.post("/users", response_model=UserDTO)
 async def create_user(user_dto: UserCreateDTO, db: AsyncSession = Depends(get_db)):
+    start_time = time.time()
+
     result = await db.execute(select(User).where(User.email == user_dto.email))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -40,6 +50,10 @@ async def create_user(user_dto: UserCreateDTO, db: AsyncSession = Depends(get_db
     # RabbitMQ
     event = UserCreatedEvent(id=new_user.id, email=new_user.email, name=new_user.name)
     await publisher.publish_user_event(event)
+
+    # Метрики
+    USERS_CREATED_TOTAL.inc()
+    API_REQUEST_DURATION.labels(method="post", endpoint="/users").observe(time.time() - start_time)
     
     return new_user
 
@@ -49,6 +63,8 @@ async def get_user(
     db: AsyncSession = Depends(get_db),
     cache: UserCacheService = Depends(get_cache_service)
 ):
+    start_time = time.time()
+
     # Кэширование
     cached_user = await cache.get_from_cache(user_id)
     if cached_user:
@@ -60,8 +76,11 @@ async def get_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     user_dto = UserDTO.model_validate(user)
-    
     await cache.save_to_cache(user_dto)
+
+    # Метрики
+    API_REQUEST_DURATION.labels(method="get", endpoint="/users/{id}").observe(time.time() - start_time)
+
     return user_dto
 
 @app.patch("/users/{user_id}", response_model=UserDTO)
@@ -110,8 +129,26 @@ async def delete_user(
 
 @app.get("/users", response_model=list[UserDTO])
 async def get_all_users(db: AsyncSession = Depends(get_db)):
+    start_time = time.time()
     result = await db.execute(select(User))
+    API_REQUEST_DURATION.labels(method="get", endpoint="/users").observe(time.time() - start_time)
     return result.scalars().all()
+
+@app.delete("/users", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_all_users(
+    db: AsyncSession = Depends(get_db),
+    cache: UserCacheService = Depends(get_cache_service)
+):
+    result = await db.execute(select(User.id))
+    user_ids = result.scalars().all()
+
+    await db.execute(delete(User))
+    await db.commit()
+
+    for uid in user_ids:
+        await cache.remove_from_cache(uid)
+    
+    logger.info(f"Deleted {len(user_ids)} users from DB and Cache.")
 
 if __name__ == "__main__":
     uvicorn.run("user_service.main:app", host="0.0.0.0", port=settings.server_port, reload=True)

@@ -1,0 +1,33 @@
+groups:
+  - name: python-alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[1m]) > 0.90
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High CPU usage by User Service"
+          description: "Python process is using a lot of CPU."
+
+  - name: user-creation-alerts
+    rules:
+      - alert: HighUserCreationRate
+        expr: increase(users_new_total[1m]) > 5
+        for: 10s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High user creation increase detected"
+          description: "More than 5 users created in the last minute."
+
+  - name: api-user-request-alerts
+    rules:
+      - alert: HighGETRequestDuration
+        expr: rate(api_user_request_duration_seconds_sum{method="get"}[1m]) / rate(api_user_request_duration_seconds_count{method="get"}[1m]) > 2
+        for: 10s
+        labels:
+          severity: critical
+        annotations:
+          summary: "High duration for GET request"
+          description: "Average GET request duration is taking too long."

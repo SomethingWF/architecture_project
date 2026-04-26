@@ -1,4 +1,5 @@
 import aio_pika
+
 from user_service.config import settings
 from user_service.schemas import UserCreatedEvent
 

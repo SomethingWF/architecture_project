@@ -1,7 +1,8 @@
-import uuid
 import logging
-import redis.asyncio as aioredis
 from typing import Optional
+import uuid
+
+import redis.asyncio as aioredis
 
 from user_service.config import settings
 from user_service.schemas import UserDTO

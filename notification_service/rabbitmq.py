@@ -17,6 +17,7 @@ class EventConsumerListener:
         async with message.process():
             event_data = json.loads(message.body.decode("utf-8"))
             logger.info(f"Получено событие: {message.routing_key}, {event_data['id']}, {event_data['name']}, {event_data['email']}")
+            await asyncio.sleep(10)
     
     async def connect(self):
         self.connection = await aio_pika.connect_robust(settings.rabbitmq_url)
